@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Sprout, Map, Factory, Trophy, Database, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Sprout, Map, Factory, Trophy, Target, Database, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 
 const NAV = [
@@ -8,6 +8,7 @@ const NAV = [
   { to: '/design', label: 'Farm Design', icon: Map },
   { to: '/production', label: 'Production', icon: Factory },
   { to: '/leveling', label: 'Leveling & Quests', icon: Trophy },
+  { to: '/goals', label: 'Goal Planner', icon: Target },
   { to: '/data', label: 'Data Editor', icon: Database },
 ];
 

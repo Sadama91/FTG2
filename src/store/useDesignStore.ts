@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuid } from 'uuid';
-import type { DesignLayout, TileKind } from '../types';
+import type { DesignLayout, PlacedItem } from '../types';
 
 function emptyLayout(name: string, width = 24, height = 20): DesignLayout {
   return { id: uuid(), name, width, height, cellGroups: {}, groups: {}, updatedAt: Date.now() };
@@ -17,8 +17,8 @@ interface DesignStore {
   setActiveLayout: (id: string) => void;
   resizeActiveLayout: (width: number, height: number) => void;
   clearActiveLayout: () => void;
-  /** Paint a stamp of the given kind anchored at (x,y) with size w x h. */
-  placeStamp: (x: number, y: number, w: number, h: number, kind: TileKind) => void;
+  /** Paint an item anchored at (x,y) with size w x h. */
+  placeStamp: (x: number, y: number, w: number, h: number, item: PlacedItem) => void;
   /** Remove whatever occupies a single cell (whole group if part of a multi-cell stamp). */
   eraseCell: (x: number, y: number) => void;
   importLayout: (layout: DesignLayout) => void;
@@ -73,14 +73,14 @@ export const useDesignStore = create<DesignStore>()(
             ),
           })),
 
-        placeStamp: (x, y, w, h, kind) =>
+        placeStamp: (x, y, w, h, item) =>
           set((s) => {
             const layout = s.layouts.find((l) => l.id === s.activeLayoutId);
             if (!layout) return {};
             if (x + w > layout.width || y + h > layout.height || x < 0 || y < 0) return {};
             const groupId = uuid();
             const cellGroups = { ...layout.cellGroups };
-            const groups = { ...layout.groups, [groupId]: kind };
+            const groups = { ...layout.groups, [groupId]: item };
             const toRemove = new Set<string>();
             for (let dx = 0; dx < w; dx++) {
               for (let dy = 0; dy < h; dy++) {

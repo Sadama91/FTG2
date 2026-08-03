@@ -1,28 +1,33 @@
-import type { Produce } from '../types';
+import type { Produce, WateringSettings } from '../types';
+import { coinsAtLevel, wateredCoinMultiplier, wateredCycleMultiplier } from '../types';
 
 export interface ProduceMetrics {
-  tiles: number;
   cycleMinutes: number;
-  coinsPerCycle: number;
+  coinsPerHarvest: number;
   coinsPerHour: number;
-  coinsPerHourPerTile: number;
   xpPerHour: number;
-  xpPerHourPerTile: number;
-  paybackCycles: number;
+  paybackHarvests: number;
 }
 
-/** Steady-state economics once a plant/animal is already established (post first grow). */
-export function computeMetrics(p: Produce): ProduceMetrics {
-  const tiles = p.plotSize.w * p.plotSize.h;
-  const cycleMinutes = p.regrowTimeMinutes ?? p.growTimeMinutes;
-  const cycleHours = cycleMinutes / 60;
-  const coinsPerCycle = p.sellPricePerHarvest;
-  const coinsPerHour = coinsPerCycle / cycleHours;
-  const coinsPerHourPerTile = coinsPerHour / tiles;
+const NO_WATERING: WateringSettings = { enabled: false, coverage: 0 };
+
+/**
+ * Steady-state economics once a plant/animal is already established.
+ * `level` is the produce type's own item level (1..maxLevel), which
+ * scales the coin payout. `watering` optionally applies the watering
+ * bonus: crops/bushes get a shorter cycle, flowers get more coins.
+ */
+export function computeMetrics(p: Produce, level = 1, watering: WateringSettings = NO_WATERING): ProduceMetrics {
+  const baseCycleMinutes = p.regrowTimeMinutes ?? p.growTimeMinutes;
+  const cycleMinutes = baseCycleMinutes * wateredCycleMultiplier(p, watering);
+  const cycleHours = Math.max(cycleMinutes, 0.0001) / 60;
+
+  const coinsPerHarvest = coinsAtLevel(p, level) * wateredCoinMultiplier(p, watering);
+
+  const coinsPerHour = coinsPerHarvest / cycleHours;
   const xpPerHour = p.xpPerHarvest / cycleHours;
-  const xpPerHourPerTile = xpPerHour / tiles;
-  const paybackCycles = p.seedCost > 0 ? Math.ceil(p.seedCost / coinsPerCycle) : 0;
-  return { tiles, cycleMinutes, coinsPerCycle, coinsPerHour, coinsPerHourPerTile, xpPerHour, xpPerHourPerTile, paybackCycles };
+  const paybackHarvests = p.seedCost > 0 ? Math.ceil(p.seedCost / coinsPerHarvest) : 0;
+  return { cycleMinutes, coinsPerHarvest, coinsPerHour, xpPerHour, paybackHarvests };
 }
 
 export function formatMinutes(min: number): string {

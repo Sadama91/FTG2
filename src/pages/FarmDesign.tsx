@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
 import { useDesignStore } from '../store/useDesignStore';
-import { PALETTE } from '../data/palette';
-import type { TileKind } from '../types';
+import { useMachineStore } from '../store/useMachineStore';
+import { TERRAIN_PALETTE } from '../data/palette';
+import type { PaletteItem } from '../types';
 import { Button, Card, Input, PageHeader, Select } from '../components/ui';
 import { Download, Eraser, Minus, Plus, Trash2, Upload } from 'lucide-react';
 
 const ERASER = '__eraser__';
+const MACHINE_COLORS = ['#6366f1', '#f97316', '#0ea5e9', '#84cc16', '#ec4899', '#eab308', '#14b8a6', '#a855f7'];
 
 export default function FarmDesign() {
   const layouts = useDesignStore((s) => s.layouts);
@@ -20,24 +22,38 @@ export default function FarmDesign() {
   const placeStamp = useDesignStore((s) => s.placeStamp);
   const eraseCell = useDesignStore((s) => s.eraseCell);
   const importLayout = useDesignStore((s) => s.importLayout);
+  const machines = useMachineStore((s) => s.machines);
 
   const layout = layouts.find((l) => l.id === activeLayoutId) ?? layouts[0];
 
-  const [tool, setTool] = useState<string>(PALETTE[0].kind);
+  const palette: PaletteItem[] = useMemo(() => {
+    const machineItems: PaletteItem[] = machines.map((m, i) => ({
+      kind: 'machine',
+      label: m.name,
+      emoji: m.emoji,
+      color: MACHINE_COLORS[i % MACHINE_COLORS.length],
+      w: m.footprint.w,
+      h: m.footprint.h,
+      machineId: m.id,
+    }));
+    return [...TERRAIN_PALETTE, ...machineItems];
+  }, [machines]);
+
+  const [tool, setTool] = useState<string>(TERRAIN_PALETTE[0].kind);
   const [cellSize, setCellSize] = useState(20);
   const [isPainting, setIsPainting] = useState(false);
   const paintMode = useRef<'paint' | 'erase'>('paint');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const selectedItem = PALETTE.find((p) => p.kind === tool);
+  const selectedItem = palette.find((p) => (p.machineId ?? p.kind) === tool);
 
   const groupBounds = useMemo(() => {
-    const bounds: Record<string, { x: number; y: number; w: number; h: number; kind: TileKind }> = {};
+    const bounds: Record<string, { x: number; y: number; w: number; h: number; item: (typeof layout.groups)[string] }> = {};
     for (const [key, groupId] of Object.entries(layout.cellGroups)) {
       const [x, y] = key.split(',').map(Number);
-      const kind = layout.groups[groupId];
-      if (!kind) continue;
-      if (!bounds[groupId]) bounds[groupId] = { x, y, w: 1, h: 1, kind };
+      const item = layout.groups[groupId];
+      if (!item) continue;
+      if (!bounds[groupId]) bounds[groupId] = { x, y, w: 1, h: 1, item };
       else {
         const b = bounds[groupId];
         const minX = Math.min(b.x, x);
@@ -54,8 +70,12 @@ export default function FarmDesign() {
   }, [layout.cellGroups, layout.groups]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = {};
-    for (const b of groupBounds) c[b.kind] = (c[b.kind] ?? 0) + 1;
+    const c: Record<string, { label: string; emoji: string; n: number }> = {};
+    for (const b of groupBounds) {
+      const key = b.item.machineId ?? b.item.kind;
+      if (!c[key]) c[key] = { label: b.item.label, emoji: b.item.emoji, n: 0 };
+      c[key].n += 1;
+    }
     return c;
   }, [groupBounds]);
 
@@ -66,7 +86,13 @@ export default function FarmDesign() {
       eraseCell(x, y);
     } else if (selectedItem) {
       paintMode.current = 'paint';
-      placeStamp(x, y, selectedItem.w, selectedItem.h, selectedItem.kind);
+      placeStamp(x, y, selectedItem.w, selectedItem.h, {
+        kind: selectedItem.kind,
+        label: selectedItem.label,
+        emoji: selectedItem.emoji,
+        color: selectedItem.color,
+        machineId: selectedItem.machineId,
+      });
     }
   }
 
@@ -75,7 +101,13 @@ export default function FarmDesign() {
     if (paintMode.current === 'erase') {
       eraseCell(x, y);
     } else if (selectedItem && selectedItem.w === 1 && selectedItem.h === 1) {
-      placeStamp(x, y, 1, 1, selectedItem.kind);
+      placeStamp(x, y, 1, 1, {
+        kind: selectedItem.kind,
+        label: selectedItem.label,
+        emoji: selectedItem.emoji,
+        color: selectedItem.color,
+        machineId: selectedItem.machineId,
+      });
     }
   }
 
@@ -189,8 +221,8 @@ export default function FarmDesign() {
 
       <div className="flex flex-col gap-4 lg:flex-row">
         {/* Palette */}
-        <Card className="h-fit shrink-0 p-3 lg:w-56">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Palette</div>
+        <Card className="h-fit max-h-[70vh] shrink-0 overflow-y-auto p-3 lg:w-56">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Terrain</div>
           <div className="grid grid-cols-2 gap-1.5 lg:grid-cols-1">
             <button
               onClick={() => setTool(ERASER)}
@@ -200,7 +232,7 @@ export default function FarmDesign() {
             >
               <Eraser size={14} /> Eraser
             </button>
-            {PALETTE.map((item) => (
+            {TERRAIN_PALETTE.map((item) => (
               <button
                 key={item.kind}
                 onClick={() => setTool(item.kind)}
@@ -217,21 +249,45 @@ export default function FarmDesign() {
             ))}
           </div>
 
+          <div className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Buildings &amp; machines
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 lg:grid-cols-1">
+            {palette
+              .filter((p) => p.machineId)
+              .map((item) => (
+                <button
+                  key={item.machineId}
+                  onClick={() => setTool(item.machineId!)}
+                  className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium transition-colors ${
+                    tool === item.machineId ? 'bg-emerald-600/20 text-emerald-400' : 'bg-neutral-800/60 text-neutral-300 hover:bg-neutral-800'
+                  }`}
+                >
+                  <span>{item.emoji}</span>
+                  <span className="flex-1">{item.label}</span>
+                  <span className="text-neutral-600">
+                    {item.w}×{item.h}
+                  </span>
+                </button>
+              ))}
+          </div>
+          <p className="mt-2 text-xs text-neutral-600">
+            Add or resize machines in the <span className="text-neutral-400">Data Editor</span> — they'll show up here
+            automatically.
+          </p>
+
           {Object.keys(counts).length > 0 && (
             <div className="mt-4 border-t border-neutral-800 pt-3">
               <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">Placed</div>
               <div className="space-y-1 text-xs text-neutral-400">
-                {Object.entries(counts).map(([kind, n]) => {
-                  const item = PALETTE.find((p) => p.kind === kind);
-                  return (
-                    <div key={kind} className="flex justify-between">
-                      <span>
-                        {item?.emoji} {item?.label ?? kind}
-                      </span>
-                      <span>{n}</span>
-                    </div>
-                  );
-                })}
+                {Object.entries(counts).map(([key, c]) => (
+                  <div key={key} className="flex justify-between">
+                    <span>
+                      {c.emoji} {c.label}
+                    </span>
+                    <span>{c.n}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -260,26 +316,24 @@ export default function FarmDesign() {
             </div>
 
             {/* placed stamps */}
-            {groupBounds.map((b, i) => {
-              const item = PALETTE.find((p) => p.kind === b.kind);
-              return (
-                <div
-                  key={i}
-                  className="pointer-events-none absolute flex items-center justify-center overflow-hidden rounded-[3px] border text-center leading-none"
-                  style={{
-                    left: b.x * cellSize,
-                    top: b.y * cellSize,
-                    width: b.w * cellSize,
-                    height: b.h * cellSize,
-                    background: (item?.color ?? '#666') + '33',
-                    borderColor: (item?.color ?? '#666') + '99',
-                    fontSize: Math.min(cellSize * Math.min(b.w, b.h) * 0.6, 28),
-                  }}
-                >
-                  {item?.emoji}
-                </div>
-              );
-            })}
+            {groupBounds.map((b, i) => (
+              <div
+                key={i}
+                title={b.item.label}
+                className="pointer-events-none absolute flex items-center justify-center overflow-hidden rounded-[3px] border text-center leading-none"
+                style={{
+                  left: b.x * cellSize,
+                  top: b.y * cellSize,
+                  width: b.w * cellSize,
+                  height: b.h * cellSize,
+                  background: b.item.color + '33',
+                  borderColor: b.item.color + '99',
+                  fontSize: Math.min(cellSize * Math.min(b.w, b.h) * 0.6, 28),
+                }}
+              >
+                {b.item.emoji}
+              </div>
+            ))}
 
             {/* pointer grid */}
             <div
@@ -307,8 +361,9 @@ export default function FarmDesign() {
       </div>
 
       <p className="mt-4 text-xs text-neutral-600">
-        Click or click-and-drag to paint. Buildings are placed with a single click anchored at the cell you click.
-        Layouts save automatically in your browser — use Export to back up or share a layout as a file.
+        Click or click-and-drag to paint. Buildings/machines are placed with a single click anchored at the cell you
+        click, sized to match their real footprint. Layouts save automatically in your browser — use Export to back
+        up or share a layout as a file.
       </p>
     </div>
   );

@@ -3,16 +3,20 @@ import { Link } from 'react-router-dom';
 import { useFarmStore } from '../store/useFarmStore';
 import { useCropStore } from '../store/useCropStore';
 import { useLevelStore } from '../store/useLevelStore';
+import { useProduceLevelStore, levelFromHarvests } from '../store/useProduceLevelStore';
+import { useWateringStore } from '../store/useWateringStore';
 import { useNow } from '../lib/useNow';
 import { computeMetrics, formatCoins } from '../lib/metrics';
 import { levelFromTotalXp } from '../lib/xp';
 import { Card, PageHeader, StatCard, Badge } from '../components/ui';
-import { Coins, Map, Sparkles, Sprout, Trophy, Zap } from 'lucide-react';
+import { Coins, Map, Sparkles, Sprout, Target, Trophy, Zap } from 'lucide-react';
 
 export default function Dashboard() {
   const plantings = useFarmStore((s) => s.plantings);
   const produce = useCropStore((s) => s.produce);
   const { totalXp, xpBase, xpExponent, quests } = useLevelStore();
+  const harvestCounts = useProduceLevelStore((s) => s.harvestCounts);
+  const watering = useWateringStore();
   const now = useNow(5000);
 
   const progress = levelFromTotalXp(totalXp, xpBase, xpExponent);
@@ -23,13 +27,14 @@ export default function Dashboard() {
         .map((planting) => {
           const p = produce.find((x) => x.id === planting.produceId);
           if (!p) return null;
-          const m = computeMetrics(p);
+          const itemLevel = levelFromHarvests(p, harvestCounts[p.id] ?? 0);
+          const m = computeMetrics(p, itemLevel, watering);
           const cycleMs = m.cycleMinutes * 60000;
           const remaining = Math.max(0, cycleMs - (now - planting.plantedAt));
           return { planting, produce: p, metrics: m, ready: remaining <= 0 };
         })
         .filter((r): r is NonNullable<typeof r> => r !== null),
-    [plantings, produce, now],
+    [plantings, produce, now, harvestCounts, watering],
   );
 
   const totals = rows.reduce(
@@ -84,11 +89,12 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
             <QuickLink to="/planner" icon={<Sprout size={18} />} label="Crop Planner" />
             <QuickLink to="/design" icon={<Map size={18} />} label="Farm Design" />
             <QuickLink to="/production" icon={<Sparkles size={18} />} label="Production" />
             <QuickLink to="/leveling" icon={<Trophy size={18} />} label="Leveling" />
+            <QuickLink to="/goals" icon={<Target size={18} />} label="Goal Planner" />
           </div>
         </Card>
 
